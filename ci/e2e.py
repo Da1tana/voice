@@ -34,6 +34,7 @@ def adb(cmd, **kw):
 
 def record(name, ok, detail=""):
     status = ok if isinstance(ok, str) else ("PASS" if ok else "FAIL")
+    detail = " ".join(str(detail).split())[:220]
     results.append((name, status, detail))
     print(f"RESULT|{name}|{status}|{detail}", flush=True)
 
@@ -153,15 +154,32 @@ def type_text(s):
     time.sleep(1)
 
 
+def keyboard_shown():
+    return "mInputShown=true" in adb("shell dumpsys input_method")
+
+
 def hide_keyboard():
-    adb("shell input keyevent 111")  # ESCAPE закрывает клавиатуру и не уходит назад по навигации
-    time.sleep(1)
+    # BACK при открытой клавиатуре только закрывает её и не уходит назад по навигации.
+    if keyboard_shown():
+        adb("shell input keyevent 4")
+        time.sleep(1)
+
+
+def edit_field():
+    for n in nodes():
+        if n.get("class") == "android.widget.EditText":
+            return n
+    return None
 
 
 def send_command(cmd):
-    if find(text="Например: добавь задачу позвонить маме", contains=True) is None:
+    field = edit_field()
+    if field is None:  # поле ввода скрыто — «Написать текстом» его показывает
         tap(text="Написать текстом", contains=True)
-    tap(text="Например: добавь задачу позвонить маме", contains=True)
+        field = edit_field()
+    if field is None:
+        raise RuntimeError("Нет поля ввода команды: " + screen_text()[:300])
+    tap_node(field)
     type_text(cmd)
     tap(desc="Отправить")
     hide_keyboard()
@@ -209,7 +227,7 @@ def step_onboarding():
     tap(text="Продолжить", scroll=True, timeout=30)
     n = wait_for(text="Сервер ассистента не настроен", timeout=15)
     detail = f"разрешений выдано: {granted}; кнопка на y={y} из {screen_h()}; "
-    return n is not None, detail + ("главный экран открыт" if n else "остались на онбординге: " + screen_text()[-200:])
+    return n is not None, detail + ("главный экран открыт" if n is not None else "остались на онбординге: " + screen_text()[-200:])
 
 
 def step_backend_settings():
@@ -225,8 +243,8 @@ def step_backend_settings():
     tap(text="OK")
     tap(text="Проверить связь")
     ok = wait_for(text="Сервер отвечает", timeout=20)
-    detail = "ответ /health получен" if ok else f"на экране: {screen_text()[:300]}"
-    if ok:
+    detail = "ответ /health получен" if ok is not None else f"на экране: {screen_text()[:300]}"
+    if ok is not None:
         tap(text="OK")
     return saved and ok is not None, detail
 
@@ -244,7 +262,7 @@ def step_task():
     send_command("add task buy bread")
     ok = wait_for(text="Готово, выполнено.", timeout=30)
     task = wait_for(text="Купить хлеб", timeout=10)
-    return ok is not None and task is not None, "ответ получен, задача видна в «Задачи на сегодня»" if task else screen_text()[:300]
+    return ok is not None and task is not None, "ответ получен, задача видна в «Задачи на сегодня»" if task is not None else screen_text()[:300]
 
 
 def step_expense():
@@ -253,7 +271,7 @@ def step_expense():
     go_tab("Расходы")
     n = wait_for(text="350 ₽", timeout=10)
     cat = find(text="Кафе", contains=True)
-    return n is not None and cat is not None, "350 ₽, категория «Кафе»" if n else screen_text()[:300]
+    return n is not None and cat is not None, "350 ₽, категория «Кафе»" if n is not None else screen_text()[:300]
 
 
 def step_note():
@@ -262,7 +280,7 @@ def step_note():
     wait_for(text="add note", timeout=30)
     go_tab("Заметки")
     n = wait_for(text="Код домофона 1234", timeout=10)
-    return n is not None, "заметка с тегом #дом" if n else screen_text()[:300]
+    return n is not None, "заметка с тегом #дом" if n is not None else screen_text()[:300]
 
 
 def step_reminder_create():
@@ -271,7 +289,7 @@ def step_reminder_create():
     wait_for(text="remind me", timeout=30)
     n = scroll_to("Проверка напоминания")
     swipe_down_to_top()
-    return n is not None, "напоминание в «Ближайшие напоминания»" if n else screen_text()[:300]
+    return n is not None, "напоминание в «Ближайшие напоминания»" if n is not None else screen_text()[:300]
 
 
 def step_history():
@@ -299,7 +317,7 @@ def step_export_import():
     backup = next((f for f in files if f.startswith("assistant-backup")), None)
     content = adb(f"shell cat /sdcard/Download/{backup}") if backup else ""
     exp_ok = exported is not None and "voice-assistant-backup" in content and "Купить хлеб" in content
-    if exported:
+    if exported is not None:
         tap(text="OK")
     if not exp_ok:
         return False, f"экспорт: диалог={exported is not None}, файл={backup}"
@@ -318,7 +336,7 @@ def step_export_import():
     tap_node(n)
     tap(text="Заменить")
     imported = wait_for(text="Импортировано", timeout=15)
-    if imported:
+    if imported is not None:
         tap(text="OK")
     swipe_down_to_top()
     tap(desc="Назад")
@@ -346,17 +364,20 @@ def step_offline():
     send_command("hello offline")
     n = wait_for(text="Нет подключения к серверу ассистента", timeout=40)
     alive = adb(f"shell pidof {PKG}").strip() != ""
-    if n:
+    if n is not None:
         tap(text="Понятно")
-    return n is not None and alive, "понятная ошибка, приложение не упало" if n else screen_text()[:300]
+    return n is not None and alive, "понятная ошибка, приложение не упало" if n is not None else screen_text()[:300]
 
 
 def step_mic():
     tap(desc="Говорить с ассистентом")
     n = wait_for(text="распознавания речи", contains=True, timeout=15)
-    detail = "без распознавателя: показана понятная ошибка" if n else "распознаватель доступен: " + screen_text()[:200]
-    if n:
+    detail = ("без распознавателя: показана понятная ошибка" if n is not None
+              else "распознаватель есть, идёт запись: " + screen_text()[:150])
+    if n is not None:
         tap(text="Понятно")
+    else:
+        tap(desc="Закончить запись")  # остановить запись, если она началась
     return "INFO", detail
 
 

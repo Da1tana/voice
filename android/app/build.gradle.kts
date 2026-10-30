@@ -15,12 +15,28 @@ android {
         applicationId = "ru.voiceassistant"
         minSdk = 29 // Android 10
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        // Номер сборки CI растёт с каждым запуском — Android принимает обновление поверх старой версии.
+        val ciBuild = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = ciBuild
+        versionName = "1.0.$ciBuild"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Фиксированный отладочный ключ в репозитории: иначе каждый CI-раннер подписывает APK новым ключом,
+    // и обновить приложение поверх старой версии нельзя. Ключ публичный (пароль android) — только для debug.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

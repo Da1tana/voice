@@ -38,6 +38,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -67,6 +69,17 @@ fun TodayScreen(
     val last by viewModel.lastExchange.collectAsStateWithLifecycle()
     var typing by rememberSaveable { mutableStateOf(false) }
     var typed by rememberSaveable { mutableStateOf("") }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focus = LocalFocusManager.current
+    // После отправки прячем клавиатуру: иначе она перекрывает ответ и нижние вкладки.
+    val submit = {
+        if (typed.isNotBlank()) {
+            viewModel.onSubmitText(typed)
+            typed = ""
+            keyboard?.hide()
+            focus.clearFocus()
+        }
+    }
 
     val zone = ui.zone
     val hour = Instant.ofEpochMilli(ui.nowMillis).atZone(zone).hour
@@ -120,11 +133,9 @@ fun TodayScreen(
                         placeholder = { Text("Например: добавь задачу позвонить маме") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(onSend = {
-                            viewModel.onSubmitText(typed); typed = ""
-                        }),
+                        keyboardActions = KeyboardActions(onSend = { submit() }),
                         trailingIcon = {
-                            IconButton(onClick = { viewModel.onSubmitText(typed); typed = "" }) {
+                            IconButton(onClick = { submit() }) {
                                 Icon(Icons.AutoMirrored.Filled.Send, "Отправить")
                             }
                         },
