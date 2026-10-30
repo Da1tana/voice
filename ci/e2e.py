@@ -68,6 +68,23 @@ def center(n):
     return (x1 + x2) // 2, (y1 + y2) // 2
 
 
+_screen_h = None
+
+
+def screen_h():
+    global _screen_h
+    if _screen_h is None:
+        m = re.findall(r"(\d+)x(\d+)", adb("shell wm size"))
+        _screen_h = int(m[-1][1]) if m else 2400
+    return _screen_h
+
+
+def in_safe_area(n):
+    """Элемент не под строкой состояния и не под панелью навигации."""
+    _, y = center(n)
+    return 120 < y < screen_h() - 160
+
+
 def find(text=None, desc=None, contains=False):
     for n in nodes():
         t, d = n.get("text", ""), n.get("content-desc", "")
@@ -102,7 +119,7 @@ def tap(text=None, desc=None, contains=False, timeout=15, scroll=False):
     end = time.time() + timeout
     while time.time() < end:
         n = find(text=text, desc=desc, contains=contains)
-        if n is not None:
+        if n is not None and (in_safe_area(n) or not scroll):
             tap_node(n)
             return True
         if scroll:
@@ -185,9 +202,14 @@ def step_launch():
 
 def step_onboarding():
     granted = len([n for n in nodes() if n.get("content-desc") == "Разрешено"])
+    btn = scroll_to("Продолжить", contains=False)
+    if btn is None:
+        return False, "кнопка «Продолжить» не найдена"
+    _, y = center(btn)
     tap(text="Продолжить", scroll=True, timeout=30)
     n = wait_for(text="Сервер ассистента не настроен", timeout=15)
-    return n is not None, f"карточек «Разрешено»: {granted}; главный экран открыт"
+    detail = f"разрешений выдано: {granted}; кнопка на y={y} из {screen_h()}; "
+    return n is not None, detail + ("главный экран открыт" if n else "остались на онбординге: " + screen_text()[-200:])
 
 
 def step_backend_settings():
