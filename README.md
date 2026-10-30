@@ -2,6 +2,18 @@
 
 Нативное Android-приложение (Kotlin + Jetpack Compose) и минимальный backend на FastAPI, который связывает телефон с Claude.
 
+**Готовый APK:** [Releases → latest-debug](https://github.com/Da1tana/voice/releases/tag/latest-debug) — пересобирается автоматически при каждом коммите в `main`.
+**Установка на Huawei, разрешения, ограничения EMUI и типовые ошибки:** [docs/УСТАНОВКА.md](docs/УСТАНОВКА.md).
+
+## Проверка (GitHub Actions, `.github/workflows/build.yml`)
+
+| Задание | Что проверяет |
+|---|---|
+| Backend tests | pytest (9 тестов, без реальных запросов к Anthropic), сборка Docker-образа |
+| Android build and unit tests | компиляция `:app` и `:wakeword`, 31 unit-тест (UseCase, разбор ответов backend, HTTP-контракт через MockWebServer), Android Lint, debug APK |
+| E2E on emulator | Android 14, образ **без сервисов Google**: настоящий APK + настоящий backend, Claude имитируется скриптом (`ci/mock_backend.py`); сценарий в `ci/e2e.py` |
+| Publish APK | выкладывает проверенный APK в релиз `latest-debug` |
+
 ## 1. Что это за приложение
 
 Личный голосовой помощник для Android 10+ (в том числе Huawei на EMUI без сервисов Google). Вы нажимаете кнопку микрофона или говорите ключевую фразу, телефон распознаёт речь, отправляет **только текст** на ваш сервер, Claude решает, что сделать, а телефон выполняет действие у себя и озвучивает ответ.
