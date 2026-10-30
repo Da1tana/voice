@@ -53,8 +53,8 @@ class ProcessVoiceCommandTest {
     @Test
     fun fullToolLoop_executesLocallyAndLogsHistory() = runTest {
         val assistant = FakeAssistant(addTaskCall(), AssistantReply.Reply("Добавил задачу на завтра."))
-        val outcome = ProcessVoiceCommandUseCase(assistant, executor(), history, time)
-            ("добавь задачу купить хлеб завтра в шесть", "c1", "ru-RU")
+        val useCase = ProcessVoiceCommandUseCase(assistant, executor(), history, time)
+        val outcome = useCase("добавь задачу купить хлеб завтра в шесть", "c1", "ru-RU")
 
         assertEquals(CommandOutcome.Answer("Добавил задачу на завтра.", listOf("add_task")), outcome)
         assertEquals(1, tasks.items.value.size)
