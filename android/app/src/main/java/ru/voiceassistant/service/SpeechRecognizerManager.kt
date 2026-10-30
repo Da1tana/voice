@@ -48,7 +48,7 @@ class SpeechRecognizerManager @Inject constructor(
         languageTag: String,
         onPartial: (String) -> Unit,
         onRms: (Float) -> Unit,
-    ): SpeechResult = withContext(Dispatchers.Main) {
+    ): SpeechResult = withContext<SpeechResult>(Dispatchers.Main) {
         val sr = when (availability()) {
             Availability.SYSTEM -> SpeechRecognizer.createSpeechRecognizer(context)
             Availability.ON_DEVICE ->
@@ -62,7 +62,7 @@ class SpeechRecognizerManager @Inject constructor(
         recognizer?.destroy()
         recognizer = sr
 
-        suspendCancellableCoroutine { cont ->
+        suspendCancellableCoroutine<SpeechResult> { cont ->
             fun finish(result: SpeechResult) {
                 if (cont.isActive) cont.resume(result)
                 sr.destroy()
