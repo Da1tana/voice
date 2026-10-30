@@ -186,7 +186,12 @@ def send_command(cmd):
 
 
 def go_tab(title):
-    tap(text=title)
+    """Вкладка нижней навигации: то же слово бывает выше на экране (карточки, фильтры) — берём самый нижний."""
+    hide_keyboard()
+    matches = [n for n in nodes() if n.get("text") == title]
+    if not matches:
+        raise RuntimeError(f"Нет вкладки {title!r}: {screen_text()[:300]}")
+    tap_node(max(matches, key=lambda n: center(n)[1]))
     time.sleep(1)
 
 
@@ -381,6 +386,23 @@ def step_mic():
     return "INFO", detail
 
 
+def step_wakeword():
+    """Foreground service с микрофоном стартует; без AccessKey Picovoice — понятная ошибка, без падения."""
+    tap(desc="Настройки")
+    wait_for(text="Слушать ключевую фразу", timeout=10)
+    sw = next((n for n in nodes() if "Switch" in (n.get("class") or "") or n.get("checkable") == "true"), None)
+    if sw is None:
+        return False, "переключатель не найден: " + screen_text()[:200]
+    tap_node(sw)
+    err = wait_for(text="Не задан AccessKey", contains=True, timeout=15)
+    alive = adb(f"shell pidof {PKG}").strip() != ""
+    svc = adb(f"shell dumpsys activity services {PKG}")
+    tap(desc="Назад")
+    return err is not None and alive, (
+        "сервис запустился и остановился с понятной ошибкой «Не задан AccessKey»" if err is not None
+        else "ошибка не показана; сервисы: " + svc[:150])
+
+
 def step_crashes():
     crash = adb("logcat -b crash -d").strip()
     fatal = [l for l in adb("logcat -d").splitlines() if "FATAL EXCEPTION" in l or "ANR in " + PKG in l]
@@ -404,6 +426,7 @@ STEPS = [
     ("Экспорт и импорт JSON", step_export_import),
     ("Работа без backend", step_offline),
     ("Кнопка микрофона", step_mic),
+    ("Ключевая фраза без ключа Picovoice", step_wakeword),
     ("Отсутствие падений", step_crashes),
 ]
 
