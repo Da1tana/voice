@@ -92,17 +92,39 @@ jobs:
                       print(f"::error title=Test {tc.get('classname')}.{tc.get('name')}::{msg}")
           EOF
 
+      - name: Unit test summary
+        if: always()
+        run: |
+          python3 - <<'EOF'
+          import glob, xml.etree.ElementTree as ET
+          rows, total, failed, skipped = [], 0, 0, 0
+          for f in sorted(glob.glob("app/build/test-results/testDebugUnitTest/*.xml")):
+              r = ET.parse(f).getroot()
+              t, fl, sk = int(r.get("tests")), int(r.get("failures")) + int(r.get("errors")), int(r.get("skipped"))
+              total += t; failed += fl; skipped += sk
+              rows.append(f"{r.get('name').split('.')[-1]}: {t} tests, {fl} failed, {sk} skipped")
+          print(f"::notice title=Unit tests: {total} run, {failed} failed, {skipped} skipped::" + "%0A".join(rows))
+          EOF
+
       - name: Android Lint
         if: success()
         continue-on-error: true
-        run: ./gradlew --console=plain lintDebug
+        run: |
+          ./gradlew --console=plain lintDebug
+          python3 - <<'EOF'
+          import xml.etree.ElementTree as ET, collections
+          r = ET.parse("app/build/reports/lint-results-debug.xml").getroot()
+          c = collections.Counter((i.get("severity"), i.get("id")) for i in r.iter("issue"))
+          lines = [f"{sev} {iid}: {n}" for (sev, iid), n in c.most_common(40)]
+          print(f"::notice title=Lint: {sum(c.values())} issues::" + "%0A".join(lines))
+          EOF
 
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: voice-assistant-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -113,3 +135,66 @@ jobs:
             android/build.log
             android/app/build/reports/
             android/app/build/test-results/
+
+  emulator:
+    name: E2E on emulator (no Google services)
+    needs: android
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r backend/requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: voice-assistant-debug-apk
+          path: apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run e2e (Android 14, AOSP image without Google)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: default
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash ci/run_e2e.sh apk/app-debug.apk
+      - name: Upload e2e screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          if-no-files-found: ignore
+          path: ci-out/
+
+  release:
+    name: Publish APK to GitHub Releases
+    needs: android
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: voice-assistant-debug-apk
+          path: apk
+      - name: Recreate "latest-debug" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mv apk/app-debug.apk apk/voice-assistant-debug.apk
+          sha256sum apk/voice-assistant-debug.apk | tee apk/SHA256.txt
+          gh release delete latest-debug --cleanup-tag -y || true
+          gh release create latest-debug apk/voice-assistant-debug.apk apk/SHA256.txt \
+            --target "$GITHUB_SHA" --prerelease \
+            --title "Debug APK (${GITHUB_SHA::7})" \
+            --notes "Автосборка из коммита ${GITHUB_SHA}. Debug-подпись, для установки на свой телефон."

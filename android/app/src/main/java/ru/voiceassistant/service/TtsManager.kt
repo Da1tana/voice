@@ -79,7 +79,9 @@ class TtsManager @Inject constructor(
             return false
         }
         if (!voiceName.isNullOrBlank()) {
-            engine.voices?.firstOrNull { it.name == voiceName }?.let { engine.voice = it }
+            // Некоторые движки (в том числе на EMUI) бросают исключение из getVoices().
+            runCatching { engine.voices?.firstOrNull { it.name == voiceName } }.getOrNull()
+                ?.let { runCatching { engine.voice = it } }
         }
         engine.setSpeechRate(rate.coerceIn(0.5f, 2.0f))
 
@@ -106,7 +108,8 @@ class TtsManager @Inject constructor(
     suspend fun voices(languageTag: String): List<TtsVoice> {
         val engine = engine() ?: return emptyList()
         val lang = Locale.forLanguageTag(languageTag).language
-        return engine.voices.orEmpty()
+        val all = runCatching { engine.voices.orEmpty() }.getOrDefault(emptySet())
+        return all
             .filter { it.locale.language == lang && !it.features.orEmpty().contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) }
             .sortedBy { it.name }
             .mapIndexed { i, v ->
