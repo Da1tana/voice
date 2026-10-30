@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Ассистент</string>
+    <string name="channel_listening">Прослушивание</string>
+    <string name="channel_reminders">Напоминания и таймеры</string>
+    <string name="notification_listening">Ассистент слушает</string>
+    <string name="notification_listening_text">Скажите ключевую фразу, чтобы задать вопрос</string>
+    <string name="action_stop">Выключить</string>
+</resources>

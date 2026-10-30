@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug-сборка: разрешён HTTP, чтобы тестировать backend по IP в локальной сети.
+     В release этот файл не попадает — там действует конфиг из src/main. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
